@@ -1,0 +1,249 @@
+Option Explicit
+
+Sub ProcessMonthlyWGReport()
+    
+    ' Declare variables
+    Dim ws As Worksheet
+    Dim wsPayments As Worksheet
+    Dim wsWHTrans As Worksheet
+    Dim wsRecon As Worksheet
+    Dim fileName As String
+    Dim totalPaymentsRow As Long
+    Dim prevMonthRow As Long
+    Dim prevMonthName As String
+    Dim lastRow As Long
+    Dim i As Long
+    Dim transCount As Long
+    Dim transAmount As Double
+    Dim invalidEntry As Boolean
+    Dim invalidTypes As String
+    Dim cell As Range
+    
+    ' Get the file name
+    fileName = ThisWorkbook.Name
+    
+    ' Step 1: Check file name logic
+    If InStr(fileName, "0002") = 0 Then
+        ' Not an "0002" file, check if it's a "CY WG" file
+        If InStr(fileName, "CY WG") > 0 Then
+            ' It's a "CY WG" file, proceed with processing
+            
+            ' Get worksheet references
+            On Error Resume Next
+            Set wsRecon = ThisWorkbook.Worksheets("Reconciliation")
+            Set wsPayments = ThisWorkbook.Worksheets("Payments")
+            Set wsWHTrans = ThisWorkbook.Worksheets("WH Transactions")
+            On Error GoTo 0
+            
+            ' Check if all required sheets exist
+            If wsRecon Is Nothing Or wsPayments Is Nothing Or wsWHTrans Is Nothing Then
+                MsgBox "One or more required worksheets are missing!", vbExclamation, "Error"
+                Exit Sub
+            End If
+            
+            ' Get previous month name
+            prevMonthName = Format(DateAdd("m", -1, Date), "mmmm")
+            
+            ' Step 2: Find "Total Payments (YTD)" row for transaction count update
+            totalPaymentsRow = 0
+            For i = 1 To wsRecon.Cells(wsRecon.Rows.Count, "A").End(xlUp).Row
+                If wsRecon.Cells(i, 1).Value = "Total Payments (YTD)" Then
+                    totalPaymentsRow = i
+                    Exit For
+                End If
+            Next i
+            
+            ' Step 3: Find previous month row for amount and invalid entry updates
+            prevMonthRow = 0
+            For i = 1 To wsRecon.Cells(wsRecon.Rows.Count, "A").End(xlUp).Row
+                If wsRecon.Cells(i, 1).Value = prevMonthName Then
+                    prevMonthRow = i
+                    Exit For
+                End If
+            Next i
+            
+            ' If required rows are found, proceed with calculations
+            If totalPaymentsRow > 0 And prevMonthRow > 0 Then
+                ' Calculate transaction count (from Payments sheet)
+                transCount = CountPreviousMonthTransactions(wsPayments)
+                
+                ' Calculate transaction amount (from WH Transactions sheet)
+                transAmount = SumPreviousMonthTransactions(wsWHTrans)
+                
+                ' Check for invalid entries (from WH Transactions sheet)
+                invalidEntry = CheckInvalidEntries(wsWHTrans)
+                
+                ' Update the reconciliation sheet
+                wsRecon.Cells(totalPaymentsRow, "E").Value = transCount
+                wsRecon.Cells(prevMonthRow, "F").Value = transAmount
+                
+                If invalidEntry Then
+                    wsRecon.Cells(prevMonthRow, "G").Value = "Invalid Entry found - Check transactions"
+                Else
+                    wsRecon.Cells(prevMonthRow, "G").Value = "No Issues"
+                End If
+                
+                MsgBox "WG report processing complete.", vbInformation, "Success"
+            Else
+                MsgBox "Could not find required rows in the Reconciliation sheet!", vbExclamation, "Error"
+            End If
+        Else
+            ' Not a "CY WG" file, do nothing
+            MsgBox "This is not a 'CY WG' file. No processing performed.", vbInformation, "Info"
+        End If
+    Else
+        ' This is an "0002" file, placeholder for future code
+        MsgBox "This is an '0002' file. No processing required at this time.", vbInformation, "Info"
+    End If
+End Sub
+
+Function CountPreviousMonthTransactions(wsPayments As Worksheet) As Long
+    ' ========================================================
+    ' Counts transactions from the previous month in the Payments sheet
+    ' A transaction is counted when both columns A and L have dates
+    ' from the previous month
+    ' ========================================================
+    
+    Dim lastRow As Long
+    Dim i As Long
+    Dim count As Long
+    Dim prevMonthStart As Date
+    Dim prevMonthEnd As Date
+    Dim dateA As Date
+    Dim dateL As Date
+    
+    ' Calculate previous month date range
+    prevMonthStart = DateSerial(Year(Date), Month(Date) - 1, 1)
+    prevMonthEnd = DateSerial(Year(Date), Month(Date), 0)
+    
+    ' Find the last row with data
+    lastRow = wsPayments.Cells(wsPayments.Rows.Count, "A").End(xlUp).Row
+    
+    ' Count rows where both column A and L have dates in previous month
+    count = 0
+    For i = 2 To lastRow ' Assuming row 1 is headers
+        ' Check if cells contain dates before converting
+        If IsDate(wsPayments.Cells(i, "A").Value) And IsDate(wsPayments.Cells(i, "L").Value) Then
+            dateA = wsPayments.Cells(i, "A").Value
+            dateL = wsPayments.Cells(i, "L").Value
+            
+            ' Check if both dates are in previous month
+            If dateA >= prevMonthStart And dateA <= prevMonthEnd And _
+               dateL >= prevMonthStart And dateL <= prevMonthEnd Then
+                count = count + 1
+            End If
+        End If
+    Next i
+    
+    CountPreviousMonthTransactions = count
+End Function
+
+Function SumPreviousMonthTransactions(wsWHTrans As Worksheet) As Double
+    ' ========================================================
+    ' Sums transactions from the previous month in the WH Transactions sheet
+    ' A transaction is included when both columns A and L have dates
+    ' from the previous month
+    ' ========================================================
+    
+    Dim lastRow As Long
+    Dim i As Long
+    Dim total As Double
+    Dim prevMonthStart As Date
+    Dim prevMonthEnd As Date
+    Dim dateA As Date
+    Dim dateL As Date
+    
+    ' Calculate previous month date range
+    prevMonthStart = DateSerial(Year(Date), Month(Date) - 1, 1)
+    prevMonthEnd = DateSerial(Year(Date), Month(Date), 0)
+    
+    ' Find the last row with data
+    lastRow = wsWHTrans.Cells(wsWHTrans.Rows.Count, "A").End(xlUp).Row
+    
+    ' Sum amounts where both column A and L have dates in previous month
+    total = 0
+    For i = 2 To lastRow ' Assuming row 1 is headers
+        ' Check if cells contain dates before converting
+        If IsDate(wsWHTrans.Cells(i, "A").Value) And IsDate(wsWHTrans.Cells(i, "L").Value) Then
+            dateA = wsWHTrans.Cells(i, "A").Value
+            dateL = wsWHTrans.Cells(i, "L").Value
+            
+            ' Check if both dates are in previous month
+            If dateA >= prevMonthStart And dateA <= prevMonthEnd And _
+               dateL >= prevMonthStart And dateL <= prevMonthEnd Then
+                ' Add the value to total (assuming the value is in the same row)
+                If IsNumeric(wsWHTrans.Cells(i, "B").Value) Then
+                    total = total + wsWHTrans.Cells(i, "B").Value
+                End If
+            End If
+        End If
+    Next i
+    
+    SumPreviousMonthTransactions = total
+End Function
+
+Function CheckInvalidEntries(wsWHTrans As Worksheet) As Boolean
+    ' ========================================================
+    ' Checks for invalid entries in Column M for previous month transactions
+    ' Valid entries are: "T"
+    ' Returns True if any invalid entries are found
+    ' ========================================================
+    
+    Dim lastRow As Long
+    Dim i As Long
+    Dim prevMonthStart As Date
+    Dim prevMonthEnd As Date
+    Dim dateA As Date
+    Dim dateL As Date
+    Dim validTypes As Variant
+    Dim isValid As Boolean
+    
+    ' Set valid transaction types
+    validTypes = Array("T")
+    
+    ' Calculate previous month date range
+    prevMonthStart = DateSerial(Year(Date), Month(Date) - 1, 1)
+    prevMonthEnd = DateSerial(Year(Date), Month(Date), 0)
+    
+    ' Find the last row with data
+    lastRow = wsWHTrans.Cells(wsWHTrans.Rows.Count, "A").End(xlUp).Row
+    
+    ' Initialize to no invalid entries found
+    CheckInvalidEntries = False
+    
+    ' Check each row for previous month transactions
+    For i = 2 To lastRow ' Assuming row 1 is headers
+        ' Check if cells contain dates before converting
+        If IsDate(wsWHTrans.Cells(i, "A").Value) And IsDate(wsWHTrans.Cells(i, "L").Value) Then
+            dateA = wsWHTrans.Cells(i, "A").Value
+            dateL = wsWHTrans.Cells(i, "L").Value
+            
+            ' Check if both dates are in previous month
+            If dateA >= prevMonthStart And dateA <= prevMonthEnd And _
+               dateL >= prevMonthStart And dateL <= prevMonthEnd Then
+                
+                ' Check if column M value is valid
+                isValid = False
+                Dim j As Integer
+                Dim cellValue As String
+                
+                ' Get the value and trim any whitespace
+                cellValue = Trim(wsWHTrans.Cells(i, "M").Value)
+                
+                ' Check against valid types
+                For j = LBound(validTypes) To UBound(validTypes)
+                    If cellValue = validTypes(j) Then
+                        isValid = True
+                        Exit For
+                    End If
+                Next j
+                
+                ' If invalid entry found, set result to True and exit
+                If Not isValid Then
+                    CheckInvalidEntries = True
+                    Exit Function
+                End If
+            End If
+        End If
+    Next i
+End Function
