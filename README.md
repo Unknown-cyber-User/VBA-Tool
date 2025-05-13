@@ -78,3 +78,60 @@ Sub CopySheetsToNewWorkbook()
     newWB.Save
     MsgBox "Data copied successfully to: " & vbCrLf & filePath, vbInformation
 End Sub
+
+
+----- NEw   ---
+
+    ' Step 5: Copy data from all sheets
+    isFirstSheet = True
+    destSheetIndex = 1
+    Set destWS = newWB.Sheets(1)
+    destWS.Name = "ConsolidatedData_" & destSheetIndex
+    destLastRow = 0
+
+    For Each ws In mainWB.Worksheets
+        With ws
+            If Application.WorksheetFunction.CountA(.Cells) > 0 Then
+                Set usedRange = .UsedRange
+                lastRow = usedRange.Row + usedRange.Rows.Count - 1
+                lastCol = usedRange.Column + usedRange.Columns.Count - 1
+
+                ' Determine the number of rows to copy
+                Dim rowsToCopy As Long
+                If isFirstSheet Then
+                    rowsToCopy = lastRow
+                Else
+                    rowsToCopy = lastRow - 1 ' skip header row
+                End If
+
+                ' If the next block will exceed row limit, create a new sheet
+                If destLastRow + rowsToCopy > 1048576 Then
+                    destSheetIndex = destSheetIndex + 1
+                    Set destWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+                    destWS.Name = "ConsolidatedData_" & destSheetIndex
+                    destLastRow = 0
+                    isFirstSheet = True ' treat this as the first sheet on new destination
+                End If
+
+                ' Determine paste destination
+                If isFirstSheet Then
+                    .Range(.Cells(1, 1), .Cells(lastRow, lastCol)).Copy _
+                        Destination:=destWS.Cells(destLastRow + 1, 1)
+                    destLastRow = destLastRow + lastRow
+                    isFirstSheet = False
+                Else
+                    If lastRow >= 2 Then
+                        .Range(.Cells(2, 1), .Cells(lastRow, lastCol)).Copy _
+                            Destination:=destWS.Cells(destLastRow + 1, 1)
+                        destLastRow = destLastRow + (lastRow - 1)
+                    End If
+                End If
+            End If
+        End With
+    Next ws
+
+    ' AutoFit columns on all sheets
+    For Each destWS In newWB.Worksheets
+        destWS.Columns.AutoFit
+    Next destWS
+
